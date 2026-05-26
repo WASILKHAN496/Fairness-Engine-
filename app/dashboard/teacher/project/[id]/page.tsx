@@ -824,11 +824,17 @@ export default function ProjectDetailPage() {
 
             <Card className="professional-card">
               <CardHeader>
-                <CardTitle>Fairness Scores</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Breakdown of peer score, effort score, teacher score, and
-                  overall fairness result.
-                </p>
+              <div className="flex flex-wrap items-center gap-2">
+  <CardTitle>AI Fairness Report Summary</CardTitle>
+  <span className="inline-flex items-center rounded-full border border-purple-300/40 bg-purple-500/10 px-3 py-1 text-xs font-semibold text-purple-700 dark:text-purple-200">
+    AI Powered
+  </span>
+</div>
+
+<p className="mt-1 text-sm text-muted-foreground">
+  Smart summary based on student fairness score, peer
+  score, effort score, work logs, and teacher evaluation.
+</p>      
               </CardHeader>
 
               <CardContent>

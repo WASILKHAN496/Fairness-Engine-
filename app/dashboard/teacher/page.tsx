@@ -130,6 +130,12 @@ export default function TeacherDashboard() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all')
 
+  const [aiInsight, setAiInsight] = useState<string | null>(null)
+  const [aiSource, setAiSource] = useState<string | null>(null)
+  const [aiNote, setAiNote] = useState<string | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+
   useEffect(() => {
     if (!loading && (!user || user.role !== 'teacher')) {
       router.push('/auth/login')
@@ -155,13 +161,18 @@ export default function TeacherDashboard() {
     })
   }, [projects, searchTerm, statusFilter, healthFilter])
 
-  const activeCount = projects.filter((project) => project.status === 'active').length
+  const activeCount = projects.filter(
+    (project) => project.status === 'active'
+  ).length
+
   const completedCount = projects.filter(
     (project) => project.status === 'completed'
   ).length
+
   const archivedCount = projects.filter(
     (project) => project.status === 'archived'
   ).length
+
   const warningCount = projects.filter(
     (project) =>
       project.health_status === 'warning' ||
@@ -368,6 +379,50 @@ export default function TeacherDashboard() {
     }
   }
 
+  const handleGenerateAiInsight = async () => {
+    setAiLoading(true)
+    setAiError(null)
+    setAiInsight(null)
+    setAiSource(null)
+    setAiNote(null)
+
+    try {
+      const res = await fetch('/api/ai/project-insight', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          projects: projects.map((project) => ({
+            id: project.id,
+            title: project.title,
+            description: project.description,
+            status: project.status,
+            health_status: project.health_status,
+            deadline: project.deadline,
+          })),
+        }),
+      })
+
+      const payload = await res.json()
+
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to generate AI insight')
+      }
+
+      setAiInsight(payload.insight || 'No insight generated.')
+      setAiSource(payload.source || null)
+      setAiNote(payload.note || null)
+    } catch (error) {
+      setAiError(
+        error instanceof Error ? error.message : 'Failed to generate AI insight'
+      )
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
   if (loading || projectsLoading) {
     return (
       <AppLoading
@@ -400,6 +455,15 @@ export default function TeacherDashboard() {
             </div>
 
             <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={handleGenerateAiInsight}
+                disabled={aiLoading || projects.length === 0}
+                className="rounded-xl"
+              >
+                {aiLoading ? 'Generating...' : 'Generate AI Insight'}
+              </Button>
+
               <Link href="/dashboard/teacher/reports">
                 <Button variant="outline" className="rounded-xl">
                   View Reports
@@ -465,6 +529,75 @@ export default function TeacherDashboard() {
           </Card>
         </div>
 
+        {(aiInsight || aiError || aiLoading) && (
+          <Card className="professional-card mb-6 overflow-hidden">
+            <CardHeader>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                <div className="flex flex-wrap items-center gap-2">
+  <CardTitle>AI Project Insight</CardTitle>
+  <span className="inline-flex items-center rounded-full border border-purple-300/40 bg-purple-500/10 px-3 py-1 text-xs font-semibold text-purple-700 dark:text-purple-200">
+    AI Powered
+  </span>
+</div>
+
+<CardDescription>
+  Smart summary based on your project statuses, deadlines, and
+  health signals.
+</CardDescription>
+                  
+                    
+                    
+                  
+                </div>
+
+                {aiSource && (
+                  <span className="badge-soft bg-muted text-muted-foreground capitalize">
+                    Source: {aiSource}
+                  </span>
+                )}
+              </div>
+            </CardHeader>
+
+            <CardContent>
+              {aiLoading && (
+                <div className="rounded-2xl border bg-muted/30 p-5">
+                  <p className="text-sm font-medium text-foreground">
+                    Generating AI insight...
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Reviewing project health, activity status, and risk signals.
+                  </p>
+
+                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full w-1/2 rounded-full bg-primary loading-progress" />
+                  </div>
+                </div>
+              )}
+
+              {aiError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
+                  {aiError}
+                </div>
+              )}
+
+              {aiInsight && (
+                <div className="rounded-2xl border bg-muted/25 p-5">
+                  {aiNote && (
+                    <div className="mb-4 rounded-xl border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800 dark:border-yellow-900/60 dark:bg-yellow-950/40 dark:text-yellow-200">
+                      {aiNote}
+                    </div>
+                  )}
+
+                  <div className="whitespace-pre-line text-sm leading-7 text-muted-foreground">
+                    {aiInsight}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {showCreateForm && (
           <Card className="professional-card mb-8">
             <CardHeader>
@@ -529,7 +662,11 @@ export default function TeacherDashboard() {
                   </div>
                 )}
 
-                <Button type="submit" disabled={isSubmitting} className="rounded-xl">
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="rounded-xl"
+                >
                   {isSubmitting ? 'Creating...' : 'Create Project'}
                 </Button>
               </form>

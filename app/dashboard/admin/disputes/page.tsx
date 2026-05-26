@@ -108,6 +108,19 @@ export default function AdminDisputesPage() {
   const [comments, setComments] = useState<Record<string, string>>({})
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [aiReviewByDisputeId, setAiReviewByDisputeId] = useState<
+  Record<string, string>
+>({})
+const [aiSourceByDisputeId, setAiSourceByDisputeId] = useState<
+  Record<string, string>
+>({})
+const [aiNoteByDisputeId, setAiNoteByDisputeId] = useState<
+  Record<string, string>
+>({})
+const [aiErrorByDisputeId, setAiErrorByDisputeId] = useState<
+  Record<string, string>
+>({})
+const [aiLoadingId, setAiLoadingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!loading && (!user || user.role !== 'admin')) {
@@ -164,7 +177,81 @@ export default function AdminDisputesPage() {
       setUpdatingId(null)
     }
   }
-
+  const handleGenerateAiReview = async (dispute: Dispute) => {
+    setAiLoadingId(dispute.id)
+  
+    setAiReviewByDisputeId((previous) => {
+      const updated = { ...previous }
+      delete updated[dispute.id]
+      return updated
+    })
+  
+    setAiSourceByDisputeId((previous) => {
+      const updated = { ...previous }
+      delete updated[dispute.id]
+      return updated
+    })
+  
+    setAiNoteByDisputeId((previous) => {
+      const updated = { ...previous }
+      delete updated[dispute.id]
+      return updated
+    })
+  
+    setAiErrorByDisputeId((previous) => {
+      const updated = { ...previous }
+      delete updated[dispute.id]
+      return updated
+    })
+  
+    try {
+      const res = await fetch('/api/ai/dispute-review', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          dispute,
+        }),
+      })
+  
+      const payload = await res.json()
+  
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to generate AI dispute review')
+      }
+  
+      setAiReviewByDisputeId((previous) => ({
+        ...previous,
+        [dispute.id]: payload.review || 'No AI review generated.',
+      }))
+  
+      if (payload.source) {
+        setAiSourceByDisputeId((previous) => ({
+          ...previous,
+          [dispute.id]: payload.source,
+        }))
+      }
+  
+      if (payload.note) {
+        setAiNoteByDisputeId((previous) => ({
+          ...previous,
+          [dispute.id]: payload.note,
+        }))
+      }
+    } catch (error) {
+      setAiErrorByDisputeId((previous) => ({
+        ...previous,
+        [dispute.id]:
+          error instanceof Error
+            ? error.message
+            : 'Failed to generate AI dispute review',
+      }))
+    } finally {
+      setAiLoadingId(null)
+    }
+  }
   if (loading || isLoading) {
     return (
       <AppLoading
@@ -324,19 +411,84 @@ export default function AdminDisputesPage() {
                   <div key={dispute.id} className="professional-card-hover p-5">
                     <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                       <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span
-                            className={`badge-soft capitalize ${getStatusBadge(
-                              dispute.status
-                            )}`}
-                          >
-                            {dispute.status}
-                          </span>
+                      {dispute.status === 'pending' && (
+  <Button
+    type="button"
+    variant="outline"
+    size="sm"
+    onClick={() => handleGenerateAiReview(dispute)}
+    disabled={aiLoadingId === dispute.id}
+    className="rounded-xl"
+  >
+    {aiLoadingId === dispute.id ? 'Reviewing...' : 'AI Review'}
+  </Button>
+)}
 
-                          <span className="text-xs text-muted-foreground">
-                            {formatDate(dispute.created_at)}
-                          </span>
-                        </div>
+{(aiLoadingId === dispute.id ||
+  aiReviewByDisputeId[dispute.id] ||
+  aiErrorByDisputeId[dispute.id]) && (
+  <div className="mt-4 rounded-2xl border bg-muted/25 p-4">
+    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+      <div className="flex flex-wrap items-center gap-2">
+  <p className="font-semibold text-foreground">
+    AI Dispute Review Assistant
+  </p>
+  <span className="inline-flex items-center rounded-full border border-purple-300/40 bg-purple-500/10 px-3 py-1 text-xs font-semibold text-purple-700 dark:text-purple-200">
+    AI Powered
+  </span>
+</div>
+
+<p className="text-xs text-muted-foreground">
+  Neutral guidance for reviewing evidence, rating context, and fairness
+  risk.
+</p>
+      </div>
+
+      {aiSourceByDisputeId[dispute.id] && (
+        <span className="badge-soft bg-muted text-muted-foreground capitalize">
+          Source: {aiSourceByDisputeId[dispute.id]}
+        </span>
+      )}
+    </div>
+
+    {aiLoadingId === dispute.id && (
+      <div className="rounded-xl border bg-background/70 p-4">
+        <p className="text-sm font-medium text-foreground">
+          Reviewing dispute with AI...
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Checking reason, evidence, related rating, and recommended admin
+          checks.
+        </p>
+
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
+          <div className="h-full w-1/2 rounded-full bg-primary loading-progress" />
+        </div>
+      </div>
+    )}
+
+    {aiErrorByDisputeId[dispute.id] && (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
+        {aiErrorByDisputeId[dispute.id]}
+      </div>
+    )}
+
+    {aiReviewByDisputeId[dispute.id] && (
+      <div className="rounded-xl border bg-background/70 p-4">
+        {aiNoteByDisputeId[dispute.id] && (
+          <div className="mb-4 rounded-xl border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800 dark:border-yellow-900/60 dark:bg-yellow-950/40 dark:text-yellow-200">
+            {aiNoteByDisputeId[dispute.id]}
+          </div>
+        )}
+
+        <div className="whitespace-pre-line text-sm leading-7 text-muted-foreground">
+          {aiReviewByDisputeId[dispute.id]}
+        </div>
+      </div>
+    )}
+  </div>
+)} 
 
                         <h3 className="mt-3 text-lg font-semibold text-foreground">
                           {dispute.student?.name ?? 'Unknown student'}

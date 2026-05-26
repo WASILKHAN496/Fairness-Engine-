@@ -1,4 +1,7 @@
+'use client'
+
 import Link from 'next/link'
+import { useState } from 'react'
 import {
   FaBookOpen,
   FaChartLine,
@@ -15,6 +18,7 @@ import {
   FaTicket,
   FaUserGear,
   FaVideo,
+  FaWandMagicSparkles,
 } from 'react-icons/fa6'
 
 const quickCards = [
@@ -96,6 +100,59 @@ const tutorials = [
 ]
 
 export default function SupportPage() {
+  const [question, setQuestion] = useState('')
+  const [aiAnswer, setAiAnswer] = useState<string | null>(null)
+  const [aiSource, setAiSource] = useState<string | null>(null)
+  const [aiNote, setAiNote] = useState<string | null>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+
+  const handleAskAi = async (customQuestion?: string) => {
+    const finalQuestion = (customQuestion ?? question).trim()
+
+    if (!finalQuestion) {
+      setAiError('Please write a support question first.')
+      return
+    }
+
+    setQuestion(finalQuestion)
+    setAiLoading(true)
+    setAiAnswer(null)
+    setAiSource(null)
+    setAiNote(null)
+    setAiError(null)
+
+    try {
+      const res = await fetch('/api/ai/support-assistant', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          question: finalQuestion,
+        }),
+      })
+
+      const payload = await res.json()
+
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to get AI support answer')
+      }
+
+      setAiAnswer(payload.answer || 'No support answer generated.')
+      setAiSource(payload.source || null)
+      setAiNote(payload.note || null)
+    } catch (error) {
+      setAiError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to get AI support answer'
+      )
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-svh bg-[#f5f5f7] text-slate-950">
       <header className="sticky top-0 z-50 border-b bg-white/90 backdrop-blur-xl">
@@ -146,7 +203,7 @@ export default function SupportPage() {
           <FaShieldHalved />
         </div>
 
-        <div className="relative mx-auto flex min-h-[390px] max-w-7xl items-center justify-center px-4 py-20 text-center">
+        <div className="relative mx-auto flex min-h-[430px] max-w-7xl items-center justify-center px-4 py-20 text-center">
           <div className="w-full max-w-2xl">
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl border border-white/20 bg-white/10 text-3xl text-white backdrop-blur">
               <FaHeadset />
@@ -155,27 +212,123 @@ export default function SupportPage() {
             <h1 className="text-4xl font-bold tracking-tight text-white md:text-5xl">
               How can we help?
             </h1>
-
+            <span className="rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
+  AI Powered
+</span>
             <p className="mt-3 text-sm leading-6 text-white/80">
-              Search guides, tutorials, and support topics for Fairness Engine.
+              Ask the AI Support Assistant or search guides, tutorials, and
+              support topics for Fairness Engine.
             </p>
 
-            <div className="mx-auto mt-7 flex max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                handleAskAi()
+              }}
+              className="mx-auto mt-7 flex max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl"
+            >
               <input
                 type="text"
-                placeholder="Search project, score, dispute, reports..."
+                value={question}
+                onChange={(e) => {
+                  setQuestion(e.target.value)
+                  setAiError(null)
+                }}
+                placeholder="Ask AI: How do I submit a dispute?"
                 className="h-13 flex-1 border-0 px-4 text-sm text-slate-800 outline-none"
               />
 
-              <button className="bg-[#ff2f6d] px-6 text-sm font-semibold text-white hover:bg-[#e2255f]">
-                Search
+              <button
+                type="submit"
+                disabled={aiLoading}
+                className="flex items-center gap-2 bg-[#ff2f6d] px-6 text-sm font-semibold text-white hover:bg-[#e2255f] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <FaWandMagicSparkles />
+                {aiLoading ? 'Asking...' : 'Ask AI'}
               </button>
+            </form>
+
+            <div className="mx-auto mt-4 flex max-w-xl flex-wrap justify-center gap-2">
+              {topics.slice(0, 3).map((topic) => (
+                <button
+                  key={topic}
+                  type="button"
+                  onClick={() => handleAskAi(topic)}
+                  className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/85 backdrop-blur transition hover:bg-white/20"
+                >
+                  {topic}
+                </button>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
       <main className="mx-auto max-w-7xl px-4 py-8">
+        {(aiAnswer || aiError || aiLoading) && (
+          <section className="relative z-20 -mt-20 mb-10">
+            <div className="rounded-2xl border border-white/70 bg-white p-5 shadow-2xl shadow-slate-900/10">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-[#4b0082]">
+                    <FaWandMagicSparkles />
+                    <h2 className="text-sm font-bold">
+                      AI Support Assistant
+                    </h2>
+                  </div>
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    Smart help for teacher, student, admin, reports, disputes,
+                    and fairness score questions.
+                  </p>
+                </div>
+
+                {aiSource && (
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold capitalize text-slate-600">
+                    Source: {aiSource}
+                  </span>
+                )}
+              </div>
+
+              {aiLoading && (
+                <div className="mt-5 rounded-xl border bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-900">
+                    Generating support answer...
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Reviewing your question and matching it with Fairness Engine
+                    workflows.
+                  </p>
+
+                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-full w-1/2 rounded-full bg-[#ff2f6d] loading-progress" />
+                  </div>
+                </div>
+              )}
+
+              {aiError && (
+                <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                  {aiError}
+                </div>
+              )}
+
+              {aiAnswer && (
+                <div className="mt-5 rounded-xl border bg-slate-50 p-4">
+                  {aiNote && (
+                    <div className="mb-4 rounded-xl border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800">
+                      {aiNote}
+                    </div>
+                  )}
+
+                  <div className="whitespace-pre-line text-sm leading-7 text-slate-600">
+                    {aiAnswer}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
         <section className="relative z-10 -mt-16">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-bold">Let&apos;s help you</h2>
@@ -186,9 +339,11 @@ export default function SupportPage() {
               const Icon = card.icon
 
               return (
-                <div
+                <button
                   key={card.title}
-                  className={`${card.color} min-h-32 rounded-xl p-5 text-white shadow-lg transition hover:-translate-y-1 hover:shadow-xl`}
+                  type="button"
+                  onClick={() => handleAskAi(card.title)}
+                  className={`${card.color} min-h-32 rounded-xl p-5 text-left text-white shadow-lg transition hover:-translate-y-1 hover:shadow-xl`}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -203,7 +358,7 @@ export default function SupportPage() {
                       </p>
                     </div>
                   </div>
-                </div>
+                </button>
               )
             })}
           </div>
@@ -222,6 +377,8 @@ export default function SupportPage() {
             {topics.map((topic) => (
               <button
                 key={topic}
+                type="button"
+                onClick={() => handleAskAi(topic)}
                 className="flex items-center justify-between border-b py-4 text-left text-sm font-medium text-slate-700 hover:text-[#4b0082]"
               >
                 <span>{topic}</span>
@@ -303,7 +460,15 @@ export default function SupportPage() {
               guide you.
             </p>
 
-            <button className="mt-6 bg-white px-5 py-2 text-xs font-bold text-[#ff2f6d]">
+            <button
+              type="button"
+              onClick={() =>
+                handleAskAi(
+                  'I need direct support with score calculation, project access, group members, or disputes.'
+                )
+              }
+              className="mt-6 bg-white px-5 py-2 text-xs font-bold text-[#ff2f6d]"
+            >
               REQUEST HELP
             </button>
           </div>
@@ -320,7 +485,15 @@ export default function SupportPage() {
               disputes work together inside Fairness Engine.
             </p>
 
-            <button className="mt-6 bg-white px-5 py-2 text-xs font-bold text-[#4b0082]">
+            <button
+              type="button"
+              onClick={() =>
+                handleAskAi(
+                  'Explain how peer ratings, effort score, teacher evaluation, and disputes work together.'
+                )
+              }
+              className="mt-6 bg-white px-5 py-2 text-xs font-bold text-[#4b0082]"
+            >
               OPEN GUIDE
             </button>
           </div>

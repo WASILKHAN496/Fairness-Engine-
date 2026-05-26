@@ -1,6 +1,6 @@
 'use client'
+
 import BackLoadingButton from '@/components/back-loading-button'
-import RouteLoadingButton from '@/components/route-loading-button'
 import AppLoading from '@/components/app-loading'
 import TeacherNav from '@/components/navigation/teacher-nav'
 import { Button } from '@/components/ui/button'
@@ -76,6 +76,12 @@ export default function TeacherReportsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [scoreFilter, setScoreFilter] = useState<ScoreFilter>('all')
 
+  const [aiSummary, setAiSummary] = useState<string | null>(null)
+  const [aiSource, setAiSource] = useState<string | null>(null)
+  const [aiNote, setAiNote] = useState<string | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+
   useEffect(() => {
     if (!loading && (!user || user.role !== 'teacher')) {
       router.push('/auth/login')
@@ -136,14 +142,59 @@ export default function TeacherReportsPage() {
     ? Math.min(...scores.map((score) => score.overallScore))
     : 0
 
-    if (loading || projectsLoading) {
-        return (
-          <AppLoading
-            title="Preparing reports dashboard"
-            subtitle="Loading project analytics, score breakdowns, and fairness reports."
-          />
-        )
+  const handleGenerateAiSummary = async () => {
+    if (!selectedProject) {
+      setAiError('Please select a project first.')
+      return
+    }
+
+    setAiLoading(true)
+    setAiError(null)
+    setAiSummary(null)
+    setAiSource(null)
+    setAiNote(null)
+
+    try {
+      const res = await fetch('/api/ai/report-summary', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          projectTitle: selectedProject.title,
+          scores,
+        }),
+      })
+
+      const payload = await res.json()
+
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to generate AI report summary')
       }
+
+      setAiSummary(payload.summary || 'No AI summary generated.')
+      setAiSource(payload.source || null)
+      setAiNote(payload.note || null)
+    } catch (error) {
+      setAiError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to generate AI report summary'
+      )
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  if (loading || projectsLoading) {
+    return (
+      <AppLoading
+        title="Preparing reports dashboard"
+        subtitle="Loading project analytics, score breakdowns, and fairness reports."
+      />
+    )
+  }
 
   if (!user || user.role !== 'teacher') {
     return null
@@ -167,9 +218,20 @@ export default function TeacherReportsPage() {
               </p>
             </div>
 
-            <BackLoadingButton href="/dashboard/teacher">
-  Back to Projects
-</BackLoadingButton>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={handleGenerateAiSummary}
+                disabled={aiLoading || scoresLoading || scores.length === 0}
+                className="rounded-xl"
+              >
+                {aiLoading ? 'Generating...' : 'Generate AI Summary'}
+              </Button>
+
+              <BackLoadingButton href="/dashboard/teacher">
+                Back to Projects
+              </BackLoadingButton>
+            </div>
           </div>
         </div>
 
@@ -196,7 +258,7 @@ export default function TeacherReportsPage() {
           <>
             <Card className="professional-card mb-6">
               <CardContent className="pt-6">
-                <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+                <div className="grid gap-4 lg:grid-cols-[1fr_auto_auto] lg:items-end">
                   <div>
                     <Label htmlFor="project-select">Select Project</Label>
                     <select
@@ -206,6 +268,10 @@ export default function TeacherReportsPage() {
                         setSelectedProjectId(e.target.value)
                         setSearchTerm('')
                         setScoreFilter('all')
+                        setAiSummary(null)
+                        setAiSource(null)
+                        setAiNote(null)
+                        setAiError(null)
                       }}
                       className="mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 text-sm text-foreground"
                     >
@@ -223,6 +289,15 @@ export default function TeacherReportsPage() {
                     className="rounded-xl"
                   >
                     {scoresLoading ? 'Refreshing...' : 'Refresh Report'}
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    onClick={handleGenerateAiSummary}
+                    disabled={aiLoading || scoresLoading || scores.length === 0}
+                    className="rounded-xl"
+                  >
+                    {aiLoading ? 'Generating...' : 'AI Summary'}
                   </Button>
                 </div>
               </CardContent>
@@ -254,6 +329,66 @@ export default function TeacherReportsPage() {
                       Deadline: {formatDate(selectedProject.deadline)}
                     </span>
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {(aiSummary || aiError || aiLoading) && (
+              <Card className="professional-card mb-6 overflow-hidden">
+                <CardHeader>
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <CardTitle>AI Fairness Report Summary</CardTitle>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Smart summary based on student fairness score, peer
+                        score, effort score, work logs, and teacher evaluation.
+                      </p>
+                    </div>
+
+                    {aiSource && (
+                      <span className="badge-soft bg-muted text-muted-foreground capitalize">
+                        Source: {aiSource}
+                      </span>
+                    )}
+                  </div>
+                </CardHeader>
+
+                <CardContent>
+                  {aiLoading && (
+                    <div className="rounded-2xl border bg-muted/30 p-5">
+                      <p className="text-sm font-medium text-foreground">
+                        Generating AI report summary...
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Reviewing student scores, missing work logs, peer
+                        ratings, and fairness risks.
+                      </p>
+
+                      <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full w-1/2 rounded-full bg-primary loading-progress" />
+                      </div>
+                    </div>
+                  )}
+
+                  {aiError && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
+                      {aiError}
+                    </div>
+                  )}
+
+                  {aiSummary && (
+                    <div className="rounded-2xl border bg-muted/25 p-5">
+                      {aiNote && (
+                        <div className="mb-4 rounded-xl border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800 dark:border-yellow-900/60 dark:bg-yellow-950/40 dark:text-yellow-200">
+                          {aiNote}
+                        </div>
+                      )}
+
+                      <div className="whitespace-pre-line text-sm leading-7 text-muted-foreground">
+                        {aiSummary}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}

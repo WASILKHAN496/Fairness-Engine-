@@ -1,5 +1,7 @@
 'use client'
 
+
+import RouteLoadingButton from '@/components/route-loading-button'
 import AppLoading from '@/components/app-loading'
 import StudentNav from '@/components/navigation/student-nav'
 import { Button } from '@/components/ui/button'
@@ -261,7 +263,15 @@ export default function StudentProjectDetailPage() {
   const [workSubmitting, setWorkSubmitting] = useState(false)
   const [ratingSubmitting, setRatingSubmitting] = useState(false)
   const [disputeSubmitting, setDisputeSubmitting] = useState(false)
-
+  const [workLogAiLoading, setWorkLogAiLoading] = useState(false)
+const [workLogAiError, setWorkLogAiError] = useState<string | null>(null)
+const [workLogAiNote, setWorkLogAiNote] = useState<string | null>(null)
+const [workLogAiSource, setWorkLogAiSource] = useState<string | null>(null)
+  const [aiExplanation, setAiExplanation] = useState<string | null>(null)
+  const [aiSource, setAiSource] = useState<string | null>(null)
+  const [aiNote, setAiNote] = useState<string | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
   useEffect(() => {
     if (!userLoading && (!user || user.role !== 'student')) {
       router.push('/auth/login')
@@ -425,7 +435,116 @@ export default function StudentProjectDetailPage() {
       setDisputeSubmitting(false)
     }
   }
-
+  const handleExplainMyScore = async () => {
+    if (!project || !myScore) {
+      setAiError('Fairness score data is not available yet.')
+      return
+    }
+  
+    setAiLoading(true)
+    setAiError(null)
+    setAiExplanation(null)
+    setAiSource(null)
+    setAiNote(null)
+  
+    try {
+      const res = await fetch('/api/ai/student-score-explanation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          project: {
+            title: project.title,
+            description: project.description,
+            status: project.status,
+            health_status: project.health_status,
+            deadline: project.deadline,
+          },
+          score: {
+            studentName: myScore.studentName,
+            studentEmail: myScore.studentEmail,
+            peerAverageRating: myScore.peerAverageRating,
+            peerScore: myScore.peerScore,
+            peerRatingCount: myScore.peerRatingCount,
+            effortScore: myScore.effortScore,
+            workLogCount: myScore.workLogCount,
+            teacherScore: myScore.teacherScore,
+            fairnessScore: myScore.fairnessScore,
+            workContribution: myScore.workContribution,
+            peerRatingScore: myScore.peerRatingScore,
+            teacherEvaluationScore: myScore.teacherEvaluationScore,
+            overallScore: myScore.overallScore,
+            status: myScore.status,
+          },
+        }),
+      })
+  
+      const payload = await res.json()
+  
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to explain your score')
+      }
+  
+      setAiExplanation(payload.explanation || 'No explanation generated.')
+      setAiSource(payload.source || null)
+      setAiNote(payload.note || null)
+    } catch (error) {
+      setAiError(
+        error instanceof Error ? error.message : 'Failed to explain your score'
+      )
+    } finally {
+      setAiLoading(false)
+    }
+  }
+  const handleImproveWorkLogWithAi = async () => {
+    setWorkLogAiLoading(true)
+    setWorkLogAiError(null)
+    setWorkLogAiNote(null)
+    setWorkLogAiSource(null)
+  
+    try {
+      const description = workForm.work_description.trim()
+  
+      if (!description) {
+        throw new Error('Write a work description first, then improve it with AI.')
+      }
+  
+      const res = await fetch('/api/ai/improve-work-log', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          weekNo: workForm.week_no,
+          description,
+          evidenceLink: workForm.evidence_link,
+        }),
+      })
+  
+      const payload = await res.json()
+  
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to improve work log')
+      }
+  
+      setWorkForm((previous) => ({
+        ...previous,
+        work_description: payload.improvedText || previous.work_description,
+      }))
+  
+      setWorkLogAiSource(payload.source || null)
+      setWorkLogAiNote(payload.note || null)
+    } catch (error) {
+      setWorkLogAiError(
+        error instanceof Error ? error.message : 'Failed to improve work log'
+      )
+    } finally {
+      setWorkLogAiLoading(false)
+    }
+  }
   const loading =
     userLoading ||
     projectLoading ||
@@ -593,9 +712,27 @@ export default function StudentProjectDetailPage() {
         <div className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr]">
           <div className="space-y-8">
             <Card className="professional-card">
-              <CardHeader>
-                <CardTitle>My Fairness Score</CardTitle>
-              </CardHeader>
+            <CardHeader>
+  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <CardTitle>My Fairness Score</CardTitle>
+      <p className="mt-1 text-sm text-muted-foreground">
+        View your score breakdown and understand what affected your result.
+      </p>
+    </div>
+
+    {myScore && (
+      <Button
+        variant="outline"
+        onClick={handleExplainMyScore}
+        disabled={aiLoading}
+        className="rounded-xl"
+      >
+        {aiLoading ? 'Explaining...' : 'Explain My Score'}
+      </Button>
+    )}
+  </div>
+</CardHeader>
 
               <CardContent>
                 {myScore ? (
@@ -682,6 +819,68 @@ export default function StudentProjectDetailPage() {
                         </p>
                       </div>
                     </div>
+                    {(aiExplanation || aiError || aiLoading) && (
+  <div className="rounded-2xl border bg-muted/25 p-4">
+    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+      <div className="flex flex-wrap items-center gap-2">
+  <p className="font-semibold text-foreground">
+    AI Score Explanation
+  </p>
+  <span className="inline-flex items-center rounded-full border border-purple-300/40 bg-purple-500/10 px-3 py-1 text-xs font-semibold text-purple-700 dark:text-purple-200">
+    AI Powered
+  </span>
+</div>
+
+<p className="text-xs text-muted-foreground">
+  Generated from your peer score, effort score, work logs, and teacher
+  evaluation.
+</p>
+      </div>
+
+      {aiSource && (
+        <span className="badge-soft bg-muted text-muted-foreground capitalize">
+          Source: {aiSource}
+        </span>
+      )}
+    </div>
+
+    {aiLoading && (
+      <div className="rounded-xl border bg-background/70 p-4">
+        <p className="text-sm font-medium text-foreground">
+          Explaining your fairness score...
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Reviewing score components and improvement areas.
+        </p>
+
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
+          <div className="h-full w-1/2 rounded-full bg-primary loading-progress" />
+        </div>
+      </div>
+    )}
+
+    {aiError && (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
+        {aiError}
+      </div>
+    )}
+
+    {aiExplanation && (
+      <div className="rounded-xl border bg-background/70 p-4">
+        {aiNote && (
+          <div className="mb-4 rounded-xl border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800 dark:border-yellow-900/60 dark:bg-yellow-950/40 dark:text-yellow-200">
+            {aiNote}
+          </div>
+        )}
+
+        <div className="whitespace-pre-line text-sm leading-7 text-muted-foreground">
+          {aiExplanation}
+        </div>
+      </div>
+    )}
+  </div>
+)}
                   </div>
                 ) : (
                   <div className="py-8 text-center">
@@ -807,22 +1006,72 @@ export default function StudentProjectDetailPage() {
                   </div>
 
                   <div>
-                    <Label htmlFor="work-description">Work Description</Label>
-                    <textarea
-                      id="work-description"
-                      value={workForm.work_description}
-                      onChange={(e) =>
-                        setWorkForm({
-                          ...workForm,
-                          work_description: e.target.value,
-                        })
-                      }
-                      disabled={workSubmitting}
-                      required
-                      className="mt-2 flex min-h-24 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm text-foreground"
-                      placeholder="Describe what you contributed this week..."
-                    />
-                  </div>
+  <div className="flex items-center justify-between gap-3">
+    <Label htmlFor="work-description">Work Description</Label>
+
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={handleImproveWorkLogWithAi}
+      disabled={workSubmitting || workLogAiLoading}
+      className="rounded-xl"
+    >
+      {workLogAiLoading ? 'Improving...' : 'Improve with AI'}
+    </Button>
+  </div>
+
+  <textarea
+    id="work-description"
+    value={workForm.work_description}
+    onChange={(e) => {
+      setWorkForm({
+        ...workForm,
+        work_description: e.target.value,
+      })
+      setWorkLogAiError(null)
+      setWorkLogAiNote(null)
+      setWorkLogAiSource(null)
+    }}
+    disabled={workSubmitting || workLogAiLoading}
+    required
+    className="mt-2 flex min-h-24 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm text-foreground"
+    placeholder="Describe what you contributed this week..."
+  />
+
+  {workLogAiLoading && (
+    <div className="mt-3 rounded-xl border bg-muted/30 p-3">
+      <p className="text-sm font-medium text-foreground">
+        Improving your work log...
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Making your contribution clearer and more professional.
+      </p>
+
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+        <div className="h-full w-1/2 rounded-full bg-primary loading-progress" />
+      </div>
+    </div>
+  )}
+
+  {workLogAiError && (
+    <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
+      {workLogAiError}
+    </div>
+  )}
+
+  {workLogAiNote && (
+    <div className="mt-3 rounded-xl border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800 dark:border-yellow-900/60 dark:bg-yellow-950/40 dark:text-yellow-200">
+      {workLogAiNote}
+    </div>
+  )}
+
+  {workLogAiSource && (
+    <p className="mt-2 text-xs text-muted-foreground">
+      AI source: <span className="capitalize">{workLogAiSource}</span>
+    </p>
+  )}
+</div>
 
                   <div>
                     <Label htmlFor="evidence-link">Evidence Link</Label>
