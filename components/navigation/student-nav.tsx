@@ -35,6 +35,10 @@ export default function StudentNav() {
   }
 
   const isActive = (href: string) => {
+    if (href === '/dashboard/student') {
+      return pathname === href
+    }
+
     return pathname === href || pathname.startsWith(`${href}/`)
   }
 
@@ -56,13 +60,37 @@ export default function StudentNav() {
           </div>
         </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Link href="/dashboard/student">
             <Button
               variant={isActive('/dashboard/student') ? 'default' : 'ghost'}
               className="rounded-xl"
             >
               Projects
+            </Button>
+          </Link>
+
+          <Link href="/dashboard/student/profile">
+            <Button
+              variant={
+                isActive('/dashboard/student/profile') ? 'default' : 'ghost'
+              }
+              className="rounded-xl"
+            >
+              Profile
+            </Button>
+          </Link>
+
+          <Link href="/dashboard/student/notifications">
+            <Button
+              variant={
+                isActive('/dashboard/student/notifications')
+                  ? 'default'
+                  : 'ghost'
+              }
+              className="rounded-xl"
+            >
+              Notifications
             </Button>
           </Link>
 

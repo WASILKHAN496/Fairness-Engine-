@@ -37,8 +37,20 @@ export default function TeacherNav() {
   }
 
   const isActive = (href: string) => {
-    return pathname === href
+    if (href === '/dashboard/teacher') {
+      return (
+        pathname === href ||
+        pathname.startsWith('/dashboard/teacher/project/')
+      )
+    }
+  
+    return pathname === href || pathname.startsWith(`${href}/`)
   }
+
+
+  
+
+  
 
   return (
     <nav className="sticky top-0 z-50 border-b border-border/70 bg-background/75 backdrop-blur-xl">
@@ -78,6 +90,30 @@ export default function TeacherNav() {
               Reports
             </Button>
           </Link>
+          <Link href="/dashboard/teacher/notifications">
+  <Button
+    variant={
+      isActive('/dashboard/teacher/notifications') ? 'default' : 'ghost'
+    }
+    className="rounded-xl"
+  >
+    Notifications
+  </Button>
+</Link>
+
+
+
+
+          <Link href="/dashboard/teacher/profile">
+  <Button
+    variant={
+      isActive('/dashboard/teacher/profile') ? 'default' : 'ghost'
+    }
+    className="rounded-xl"
+  >
+    Profile
+  </Button>
+</Link>
 
           <Button
             variant="outline"

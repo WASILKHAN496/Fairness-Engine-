@@ -48,6 +48,7 @@ interface Dispute {
   status: 'pending' | 'resolved' | 'rejected'
 }
 
+
 async function fetcher(url: string) {
   const res = await fetch(url, {
     credentials: 'include',
@@ -91,6 +92,19 @@ export default function AdminDashboardPage() {
   const { user, loading } = useAuth()
 
   const canFetch = !loading && user?.role === 'admin'
+  const {
+    data: adminAiSummary,
+    error: adminAiSummaryError,
+    isLoading: adminAiSummaryLoading,
+    mutate: mutateAdminAiSummary,
+  } = useSWR<AdminAiSummary>(
+    canFetch ? '/api/admin/ai-summary' : null,
+    fetcher,
+    {
+      shouldRetryOnError: false,
+      revalidateOnFocus: false,
+    }
+  )
 
   const {
     data: users,
@@ -201,13 +215,109 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {(usersError || alertsError || disputesError) && (
+        {(usersError || alertsError || disputesError || adminAiSummaryError) && (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
             {usersError instanceof Error && <p>{usersError.message}</p>}
             {alertsError instanceof Error && <p>{alertsError.message}</p>}
             {disputesError instanceof Error && <p>{disputesError.message}</p>}
+            {adminAiSummaryError instanceof Error && (
+  <p>{adminAiSummaryError.message}</p>
+)}
           </div>
         )}
+        <Card className="professional-card mb-6 overflow-hidden">
+  <CardHeader>
+    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <CardTitle>AI System Summary</CardTitle>
+
+          <span className="inline-flex items-center rounded-full border border-purple-300/40 bg-purple-500/10 px-3 py-1 text-xs font-semibold text-purple-700 dark:text-purple-200">
+            AI Powered
+          </span>
+
+          {adminAiSummary?.generatedBy === 'fallback' && (
+            <span className="inline-flex items-center rounded-full border border-yellow-300/40 bg-yellow-500/10 px-3 py-1 text-xs font-semibold text-yellow-700 dark:text-yellow-200">
+              Fallback Mode
+            </span>
+          )}
+        </div>
+
+        <p className="mt-1 text-sm text-muted-foreground">
+          Smart admin overview based on users, projects, disputes, alerts,
+          work logs, peer ratings, and project health.
+        </p>
+      </div>
+
+      <Button
+        variant="outline"
+        onClick={() => mutateAdminAiSummary()}
+        disabled={adminAiSummaryLoading}
+        className="rounded-xl"
+      >
+        {adminAiSummaryLoading ? 'Refreshing...' : 'Refresh AI'}
+      </Button>
+    </div>
+  </CardHeader>
+
+  <CardContent>
+    {adminAiSummaryLoading ? (
+      <div className="rounded-2xl border bg-muted/30 p-5">
+        <p className="text-sm font-medium text-foreground">
+          Generating admin AI summary...
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Reviewing system health, risks, disputes, users, and contribution
+          activity.
+        </p>
+      </div>
+    ) : adminAiSummary ? (
+      <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+        <div className="rounded-2xl border bg-muted/30 p-5">
+          <p className="text-sm font-semibold text-foreground">
+            System Health Summary
+          </p>
+
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            {adminAiSummary.summary}
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="rounded-2xl border bg-red-50 p-5 dark:bg-red-950/20">
+            <p className="text-sm font-semibold text-red-700 dark:text-red-200">
+              Key Risks
+            </p>
+
+            <ul className="mt-3 space-y-2 text-sm leading-6 text-red-700 dark:text-red-200">
+              {adminAiSummary.risks.map((risk, index) => (
+                <li key={index}>• {risk}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-2xl border bg-green-50 p-5 dark:bg-green-950/20">
+            <p className="text-sm font-semibold text-green-700 dark:text-green-200">
+              Recommended Actions
+            </p>
+
+            <ul className="mt-3 space-y-2 text-sm leading-6 text-green-700 dark:text-green-200">
+              {adminAiSummary.actions.map((action, index) => (
+                <li key={index}>• {action}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    ) : (
+      <div className="rounded-2xl border bg-muted/30 p-5">
+        <p className="text-sm text-muted-foreground">
+          AI summary is not available yet. Click Refresh AI.
+        </p>
+      </div>
+    )}
+  </CardContent>
+</Card>
 
         <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card className="professional-card-hover">

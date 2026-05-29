@@ -187,7 +187,7 @@ export async function GET() {
           title: 'Students missing work logs',
           description: `${studentsWithoutLogs.length} student(s) in ${project.title} have no work logs yet.`,
           actionLabel: 'View Reports',
-          actionHref: '/dashboard/teacher/reports',
+          actionHref: '/dashboard/admin/reports',
           createdAt: project.created_at,
         })
       }

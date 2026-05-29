@@ -7,7 +7,7 @@ async function getUserProfile(
 ) {
   const { data, error } = await supabase
     .from('users')
-    .select('id, role')
+    .select('id, role, status')
     .eq('id', userId)
     .single()
 
@@ -74,64 +74,52 @@ export async function GET(request: NextRequest) {
 
     const profile = await getUserProfile(supabase, user.id)
 
-    if (!profile) {
+    if (!profile || profile.role !== 'student' || profile.status === 'inactive') {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const projectId = String(searchParams.get('projectId') ?? '').trim()
+
+    if (!projectId) {
       return NextResponse.json(
-        { error: 'User profile not found' },
+        { error: 'Project ID is required' },
+        { status: 400 }
+      )
+    }
+
+    const project = await getProject(supabase, projectId)
+
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    const allowed = await isStudentInProject(supabase, user.id, projectId)
+
+    if (!allowed) {
+      return NextResponse.json(
+        { error: 'You are not assigned to this project' },
         { status: 403 }
       )
     }
 
-    const { searchParams } = new URL(request.url)
-    const projectId = searchParams.get('projectId')
-    const requestedStudentId = searchParams.get('studentId')
-
-    let query = supabase
-      .from('work_logs')
-      .select('*')
-      .order('week_no', { ascending: true })
+    const { data, error } = await supabase
+      .from('project_tasks')
+      .select(
+        'id, project_id, student_id, title, description, is_completed, created_at, updated_at'
+      )
+      .eq('project_id', projectId)
+      .eq('student_id', user.id)
       .order('created_at', { ascending: false })
-
-    if (projectId) {
-      const project = await getProject(supabase, projectId)
-
-      if (!project) {
-        return NextResponse.json(
-          { error: 'Project not found' },
-          { status: 404 }
-        )
-      }
-
-      if (profile.role === 'teacher' && project.teacher_id !== user.id) {
-        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-      }
-
-      if (profile.role === 'student') {
-        const allowed = await isStudentInProject(supabase, user.id, projectId)
-
-        if (!allowed) {
-          return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-        }
-      }
-
-      query = query.eq('project_id', projectId)
-    }
-
-    if (profile.role === 'student') {
-      query = query.eq('student_id', user.id)
-    } else if (requestedStudentId) {
-      query = query.eq('student_id', requestedStudentId)
-    }
-
-    const { data, error } = await query
 
     if (error) throw error
 
     return NextResponse.json(data ?? [])
   } catch (error) {
-    console.error('Error fetching work logs:', error)
+    console.error('Error fetching student tasks:', error)
 
     return NextResponse.json(
-      { error: 'Failed to fetch work logs' },
+      { error: 'Failed to fetch student tasks' },
       { status: 500 }
     )
   }
@@ -152,9 +140,9 @@ export async function POST(request: NextRequest) {
 
     const profile = await getUserProfile(supabase, user.id)
 
-    if (!profile || profile.role !== 'student') {
+    if (!profile || profile.role !== 'student' || profile.status === 'inactive') {
       return NextResponse.json(
-        { error: 'Only students can submit work logs' },
+        { error: 'Only active students can create tasks' },
         { status: 403 }
       )
     }
@@ -162,9 +150,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     const projectId = String(body.project_id ?? '').trim()
-    const weekNo = Number(body.week_no)
-    const workDescription = String(body.work_description ?? '').trim()
-    const evidenceLink = String(body.evidence_link ?? '').trim() || null
+    const title = String(body.title ?? '').trim()
+    const description = String(body.description ?? '').trim() || null
 
     if (!projectId) {
       return NextResponse.json(
@@ -173,16 +160,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!Number.isInteger(weekNo) || weekNo < 1) {
+    if (!title) {
       return NextResponse.json(
-        { error: 'Week number must be a positive number' },
-        { status: 400 }
-      )
-    }
-
-    if (!workDescription) {
-      return NextResponse.json(
-        { error: 'Work description is required' },
+        { error: 'Task title is required' },
         { status: 400 }
       )
     }
@@ -190,10 +170,7 @@ export async function POST(request: NextRequest) {
     const project = await getProject(supabase, projectId)
 
     if (!project) {
-      return NextResponse.json(
-        { error: 'Project not found' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
     const allowed = await isStudentInProject(supabase, user.id, projectId)
@@ -206,13 +183,13 @@ export async function POST(request: NextRequest) {
     }
 
     const { data, error } = await supabase
-      .from('work_logs')
+      .from('project_tasks')
       .insert({
-        student_id: user.id,
         project_id: projectId,
-        week_no: weekNo,
-        work_description: workDescription,
-        evidence_link: evidenceLink,
+        student_id: user.id,
+        title,
+        description,
+        is_completed: false,
       })
       .select()
       .single()
@@ -221,14 +198,15 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(data, { status: 201 })
   } catch (error) {
-    console.error('Error creating work log:', error)
+    console.error('Error creating student task:', error)
 
     return NextResponse.json(
-      { error: 'Failed to create work log' },
+      { error: 'Failed to create student task' },
       { status: 500 }
     )
   }
 }
+
 export async function PATCH(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -244,9 +222,9 @@ export async function PATCH(request: NextRequest) {
 
     const profile = await getUserProfile(supabase, user.id)
 
-    if (!profile || profile.role !== 'student') {
+    if (!profile || profile.role !== 'student' || profile.status === 'inactive') {
       return NextResponse.json(
-        { error: 'Only students can update work logs' },
+        { error: 'Only active students can update tasks' },
         { status: 403 }
       )
     }
@@ -254,52 +232,66 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json()
 
     const id = String(body.id ?? '').trim()
-    const weekNo = Number(body.week_no)
-    const workDescription = String(body.work_description ?? '').trim()
-    const evidenceLink = String(body.evidence_link ?? '').trim() || null
+    const title = body.title !== undefined ? String(body.title).trim() : null
+    const description =
+      body.description !== undefined
+        ? String(body.description).trim() || null
+        : undefined
+    const isCompleted =
+      typeof body.is_completed === 'boolean' ? body.is_completed : undefined
 
     if (!id) {
       return NextResponse.json(
-        { error: 'Work log ID is required' },
+        { error: 'Task ID is required' },
         { status: 400 }
       )
     }
 
-    if (!Number.isInteger(weekNo) || weekNo < 1) {
-      return NextResponse.json(
-        { error: 'Week number must be a positive number' },
-        { status: 400 }
-      )
-    }
-
-    if (!workDescription) {
-      return NextResponse.json(
-        { error: 'Work description is required' },
-        { status: 400 }
-      )
-    }
-
-    const { data: existingLog, error: existingError } = await supabase
-      .from('work_logs')
+    const { data: existingTask, error: existingError } = await supabase
+      .from('project_tasks')
       .select('*')
       .eq('id', id)
       .eq('student_id', user.id)
       .single()
 
-    if (existingError || !existingLog) {
+    if (existingError || !existingTask) {
       return NextResponse.json(
-        { error: 'Work log not found or access denied' },
+        { error: 'Task not found or access denied' },
         { status: 404 }
       )
     }
 
+    const updateData: {
+      title?: string
+      description?: string | null
+      is_completed?: boolean
+      updated_at: string
+    } = {
+      updated_at: new Date().toISOString(),
+    }
+
+    if (title !== null) {
+      if (!title) {
+        return NextResponse.json(
+          { error: 'Task title cannot be empty' },
+          { status: 400 }
+        )
+      }
+
+      updateData.title = title
+    }
+
+    if (description !== undefined) {
+      updateData.description = description
+    }
+
+    if (isCompleted !== undefined) {
+      updateData.is_completed = isCompleted
+    }
+
     const { data, error } = await supabase
-      .from('work_logs')
-      .update({
-        week_no: weekNo,
-        work_description: workDescription,
-        evidence_link: evidenceLink,
-      })
+      .from('project_tasks')
+      .update(updateData)
       .eq('id', id)
       .eq('student_id', user.id)
       .select()
@@ -309,10 +301,10 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Error updating work log:', error)
+    console.error('Error updating student task:', error)
 
     return NextResponse.json(
-      { error: 'Failed to update work log' },
+      { error: 'Failed to update student task' },
       { status: 500 }
     )
   }
@@ -333,9 +325,9 @@ export async function DELETE(request: NextRequest) {
 
     const profile = await getUserProfile(supabase, user.id)
 
-    if (!profile || profile.role !== 'student') {
+    if (!profile || profile.role !== 'student' || profile.status === 'inactive') {
       return NextResponse.json(
-        { error: 'Only students can delete work logs' },
+        { error: 'Only active students can delete tasks' },
         { status: 403 }
       )
     }
@@ -345,27 +337,27 @@ export async function DELETE(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json(
-        { error: 'Work log ID is required' },
+        { error: 'Task ID is required' },
         { status: 400 }
       )
     }
 
-    const { data: existingLog, error: existingError } = await supabase
-      .from('work_logs')
+    const { data: existingTask, error: existingError } = await supabase
+      .from('project_tasks')
       .select('id')
       .eq('id', id)
       .eq('student_id', user.id)
       .single()
 
-    if (existingError || !existingLog) {
+    if (existingError || !existingTask) {
       return NextResponse.json(
-        { error: 'Work log not found or access denied' },
+        { error: 'Task not found or access denied' },
         { status: 404 }
       )
     }
 
     const { error } = await supabase
-      .from('work_logs')
+      .from('project_tasks')
       .delete()
       .eq('id', id)
       .eq('student_id', user.id)
@@ -374,10 +366,10 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error deleting work log:', error)
+    console.error('Error deleting student task:', error)
 
     return NextResponse.json(
-      { error: 'Failed to delete work log' },
+      { error: 'Failed to delete student task' },
       { status: 500 }
     )
   }

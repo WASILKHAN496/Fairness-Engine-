@@ -46,6 +46,24 @@ interface Group {
     } | null
   }>
 }
+interface ProjectMessageUser {
+  id: string
+  name: string
+  email: string
+  role: string
+}
+
+interface ProjectMessage {
+  id: string
+  project_id: string
+  sender_id: string
+  receiver_id: string
+  message: string
+  is_read: boolean
+  created_at: string
+  sender?: ProjectMessageUser | null
+  receiver?: ProjectMessageUser | null
+}
 
 async function fetcher(url: string) {
   const res = await fetch(url, {
@@ -158,6 +176,22 @@ export default function ProjectDetailPage() {
       revalidateOnFocus: false,
     }
   )
+  const {
+    data: projectMessages,
+    error: projectMessagesError,
+    isLoading: projectMessagesLoading,
+    mutate: mutateProjectMessages,
+  } = useSWR<ProjectMessage[]>(
+    projectId
+      ? `/api/project-messages?projectId=${encodeURIComponent(projectId)}`
+      : null,
+    fetcher,
+    {
+      shouldRetryOnError: false,
+      refreshInterval: 8000,
+      revalidateOnFocus: true,
+    }
+  )
 
   const {
     scores,
@@ -187,12 +221,20 @@ export default function ProjectDetailPage() {
   const [evaluationSuccess, setEvaluationSuccess] = useState<string | null>(
     null
   )
+  const [selectedChatStudentId, setSelectedChatStudentId] = useState('')
+const [teacherReply, setTeacherReply] = useState('')
+const [teacherReplySending, setTeacherReplySending] = useState(false)
+const [teacherReplyError, setTeacherReplyError] = useState<string | null>(null)
+const [teacherReplySuccess, setTeacherReplySuccess] = useState<string | null>(
+  null
+)
 
   useEffect(() => {
     if (!userLoading && (!user || user.role !== 'teacher')) {
       router.push('/auth/login')
     }
   }, [user, userLoading, router])
+  
 
   const filteredStudents = useMemo(() => {
     const query = studentSearch.trim().toLowerCase()
@@ -228,6 +270,50 @@ export default function ProjectDetailPage() {
   const needsAttentionCount = scores.filter(
     (score) => score.overallScore < 50
   ).length
+  const chatStudents = useMemo(() => {
+    if (!projectMessages) return []
+  
+    const map = new Map<string, ProjectMessageUser>()
+  
+    projectMessages.forEach((message) => {
+      if (message.sender?.role === 'student') {
+        map.set(message.sender.id, message.sender)
+      }
+  
+      if (message.receiver?.role === 'student') {
+        map.set(message.receiver.id, message.receiver)
+      }
+    })
+  
+    return Array.from(map.values())
+  }, [projectMessages])
+  useEffect(() => {
+    if (!selectedChatStudentId && chatStudents.length > 0) {
+      setSelectedChatStudentId(chatStudents[0].id)
+    }
+  }, [chatStudents, selectedChatStudentId])
+  
+  const selectedChatMessages = useMemo(() => {
+    if (!projectMessages || !selectedChatStudentId) return []
+  
+    return projectMessages.filter(
+      (message) =>
+        message.sender_id === selectedChatStudentId ||
+        message.receiver_id === selectedChatStudentId
+    )
+  }, [projectMessages, selectedChatStudentId])
+  
+  const selectedChatStudent = useMemo(() => {
+    return chatStudents.find((student) => student.id === selectedChatStudentId)
+  }, [chatStudents, selectedChatStudentId])
+  
+  const unreadStudentMessages = useMemo(() => {
+    if (!projectMessages || !user) return 0
+  
+    return projectMessages.filter(
+      (message) => message.receiver_id === user.id && !message.is_read
+    ).length
+  }, [projectMessages, user])
 
   const handleAddGroup = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -327,13 +413,64 @@ export default function ProjectDetailPage() {
       setEvaluationSubmitting(false)
     }
   }
+  const handleSendTeacherReply = async (
+    e: React.FormEvent<HTMLFormElement>
+  ) => {
+    e.preventDefault()
+  
+    setTeacherReplySending(true)
+    setTeacherReplyError(null)
+    setTeacherReplySuccess(null)
+  
+    try {
+      const message = teacherReply.trim()
+  
+      if (!selectedChatStudentId) {
+        throw new Error('Please select a student conversation first.')
+      }
+  
+      if (!message) {
+        throw new Error('Write a reply before sending.')
+      }
+  
+      const res = await fetch('/api/project-messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          project_id: projectId,
+          receiver_id: selectedChatStudentId,
+          message,
+        }),
+      })
+  
+      const payload = await res.json()
+  
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to send reply')
+      }
+  
+      setTeacherReply('')
+      setTeacherReplySuccess('Reply sent successfully.')
+      await mutateProjectMessages()
+    } catch (error) {
+      setTeacherReplyError(
+        error instanceof Error ? error.message : 'Failed to send reply'
+      )
+    } finally {
+      setTeacherReplySending(false)
+    }
+  }
 
   const loading =
-    userLoading ||
-    projectLoading ||
-    groupsLoading ||
-    scoresLoading ||
-    studentsLoading
+  userLoading ||
+  projectLoading ||
+  groupsLoading ||
+  projectMessagesLoading ||
+  scoresLoading ||
+  studentsLoading
 
     if (loading) {
       return (
@@ -722,6 +859,205 @@ export default function ProjectDetailPage() {
           </div>
 
           <div>
+          <Card className="mb-6 overflow-hidden border-0 bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 text-white shadow-2xl">
+  <CardHeader className="border-b border-white/10 bg-white/5">
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <CardTitle className="text-white">Teacher Inbox</CardTitle>
+        <p className="mt-1 text-sm text-white/60">
+          Reply to student project questions, task concerns, work log issues,
+          and fairness score questions.
+        </p>
+      </div>
+
+      {unreadStudentMessages > 0 && (
+        <span className="rounded-full bg-pink-500 px-3 py-1 text-xs font-semibold text-white">
+          {unreadStudentMessages} unread
+        </span>
+      )}
+    </div>
+  </CardHeader>
+
+  <CardContent className="space-y-5 p-5">
+    {projectMessagesError && (
+      <div className="rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-100">
+        {projectMessagesError instanceof Error
+          ? projectMessagesError.message
+          : 'Failed to load project messages'}
+      </div>
+    )}
+
+    {chatStudents.length === 0 ? (
+      <div className="rounded-3xl border border-white/10 bg-black/20 p-8 text-center">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-white/10 text-2xl">
+          📥
+        </div>
+
+        <h3 className="mt-4 font-semibold text-white">
+          No student messages yet
+        </h3>
+
+        <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-white/55">
+          Student help messages for this project will appear here when they
+          contact you.
+        </p>
+      </div>
+    ) : (
+      <>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {chatStudents.map((student) => {
+            const isSelected = selectedChatStudentId === student.id
+            const studentUnread =
+              projectMessages?.filter(
+                (message) =>
+                  message.sender_id === student.id &&
+                  message.receiver_id === user?.id &&
+                  !message.is_read
+              ).length ?? 0
+
+            return (
+              <button
+                key={student.id}
+                type="button"
+                onClick={() => {
+                  setSelectedChatStudentId(student.id)
+                  setTeacherReplyError(null)
+                  setTeacherReplySuccess(null)
+                }}
+                className={`min-w-[180px] rounded-2xl border p-3 text-left transition ${
+                  isSelected
+                    ? 'border-white/30 bg-white text-slate-950'
+                    : 'border-white/10 bg-white/10 text-white hover:bg-white/15'
+                }`}
+              >
+                <p className="truncate text-sm font-semibold">
+                  {student.name || 'Student'}
+                </p>
+
+                <p
+                  className={`mt-1 truncate text-xs ${
+                    isSelected ? 'text-slate-500' : 'text-white/50'
+                  }`}
+                >
+                  {student.email}
+                </p>
+
+                {studentUnread > 0 && (
+                  <span className="mt-2 inline-flex rounded-full bg-pink-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                    {studentUnread} new
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="rounded-3xl border border-white/10 bg-black/20">
+          <div className="border-b border-white/10 p-4">
+            <p className="text-sm font-semibold text-white">
+              {selectedChatStudent?.name || 'Select student'}
+            </p>
+
+            {selectedChatStudent?.email && (
+              <p className="mt-1 text-xs text-white/50">
+                {selectedChatStudent.email}
+              </p>
+            )}
+          </div>
+
+          <div className="max-h-[360px] space-y-4 overflow-y-auto p-4">
+            {selectedChatMessages.length === 0 ? (
+              <div className="py-8 text-center text-sm text-white/50">
+                No messages in this conversation.
+              </div>
+            ) : (
+              selectedChatMessages.map((message) => {
+                const isMine = message.sender_id === user?.id
+
+                return (
+                  <div
+                    key={message.id}
+                    className={`flex ${
+                      isMine ? 'justify-end' : 'justify-start'
+                    }`}
+                  >
+                    <div
+                      className={`max-w-[85%] rounded-3xl px-4 py-3 shadow-lg ${
+                        isMine
+                          ? 'rounded-br-md bg-blue-500 text-white'
+                          : 'rounded-bl-md border border-white/10 bg-white/10 text-white'
+                      }`}
+                    >
+                      <div className="mb-1 flex items-center gap-2">
+                        <span className="text-xs font-semibold opacity-90">
+                          {isMine
+                            ? 'You'
+                            : message.sender?.name || 'Student'}
+                        </span>
+
+                        <span className="text-[10px] opacity-60">
+                          {formatDate(message.created_at)}
+                        </span>
+                      </div>
+
+                      <p className="whitespace-pre-line text-sm leading-6">
+                        {message.message}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+
+        {(teacherReplyError || teacherReplySuccess) && (
+          <div
+            className={`rounded-2xl border p-3 text-sm ${
+              teacherReplyError
+                ? 'border-red-400/30 bg-red-500/10 text-red-100'
+                : 'border-green-400/30 bg-green-500/10 text-green-100'
+            }`}
+          >
+            {teacherReplyError || teacherReplySuccess}
+          </div>
+        )}
+
+        <form
+          onSubmit={handleSendTeacherReply}
+          className="rounded-3xl border border-white/10 bg-white/10 p-3"
+        >
+          <textarea
+            value={teacherReply}
+            onChange={(e) => {
+              setTeacherReply(e.target.value)
+              setTeacherReplyError(null)
+              setTeacherReplySuccess(null)
+            }}
+            disabled={teacherReplySending || !selectedChatStudentId}
+            maxLength={1500}
+            placeholder="Write a reply to the selected student..."
+            className="min-h-24 w-full resize-none rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/40"
+          />
+
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-white/45">
+              {teacherReply.length}/1500 characters
+            </p>
+
+            <Button
+              type="submit"
+              disabled={teacherReplySending || !selectedChatStudentId}
+              className="rounded-2xl bg-white px-6 font-semibold text-slate-950 hover:bg-white/90"
+            >
+              {teacherReplySending ? 'Sending...' : 'Reply to Student'}
+            </Button>
+          </div>
+        </form>
+      </>
+    )}
+  </CardContent>
+</Card>
             <Card className="professional-card mb-6">
               <CardHeader>
                 <CardTitle className="text-lg">Teacher Evaluation</CardTitle>

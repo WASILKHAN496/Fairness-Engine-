@@ -7,6 +7,7 @@ export interface User {
   name: string
   role: 'admin' | 'teacher' | 'student'
   status: 'active' | 'inactive'
+  avatar_url?: string | null
 }
 
 /**
@@ -36,7 +37,7 @@ async function fetchOrCreateUserProfile(authUser: {
 
   const { data: existingProfile, error: profileError } = await supabase
     .from('users')
-    .select('id, email, name, role, status')
+    .select('id, email, name, role, status, avatar_url')
     .eq('id', authUser.id)
     .maybeSingle()
 
@@ -67,7 +68,7 @@ async function fetchOrCreateUserProfile(authUser: {
       role,
       status: 'active',
     })
-    .select('id, email, name, role, status')
+    .select('id, email, name, role, status, avatar_url')
     .single()
 
   if (insertError) {
