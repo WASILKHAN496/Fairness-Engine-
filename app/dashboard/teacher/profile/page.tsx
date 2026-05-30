@@ -13,7 +13,12 @@ import { useAuth } from '@/hooks/useAuth'
 import { useProjects } from '@/hooks/useProjects'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import {
+  ChangeEvent,
+  FormEvent,
+  useEffect,
+  useState,
+} from 'react'
 
 function getInitials(name?: string | null, email?: string | null) {
   const source = name || email || 'Teacher'
@@ -47,6 +52,14 @@ export default function TeacherProfilePage() {
   const router = useRouter()
   const { user, loading } = useAuth()
 
+  const [nameForm, setNameForm] = useState('')
+  const [localName, setLocalName] = useState('')
+  const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null)
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [imageUploading, setImageUploading] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileSuccess, setProfileSuccess] = useState<string | null>(null)
+
   const canFetchProjects = !loading && user?.role === 'teacher'
 
   const {
@@ -60,6 +73,96 @@ export default function TeacherProfilePage() {
       router.push('/auth/login')
     }
   }, [user, loading, router])
+
+  useEffect(() => {
+    if (user) {
+      setNameForm(user.name || '')
+      setLocalName(user.name || '')
+      setLocalAvatarUrl(user.avatar_url || null)
+    }
+  }, [user])
+
+  const handleUpdateName = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    setProfileSaving(true)
+    setProfileError(null)
+    setProfileSuccess(null)
+
+    try {
+      const name = nameForm.trim()
+
+      if (!name) {
+        throw new Error('Name is required.')
+      }
+
+      const res = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ name }),
+      })
+
+      const payload = await res.json()
+
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to update profile name')
+      }
+
+      setLocalName(payload.name || name)
+      setNameForm(payload.name || name)
+      setProfileSuccess('Profile name updated successfully.')
+      router.refresh()
+    } catch (error) {
+      setProfileError(
+        error instanceof Error ? error.message : 'Failed to update profile name'
+      )
+    } finally {
+      setProfileSaving(false)
+    }
+  }
+
+  const handleUploadProfileImage = async (
+    event: ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0]
+
+    if (!file) return
+
+    setImageUploading(true)
+    setProfileError(null)
+    setProfileSuccess(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch('/api/profile-image', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      })
+
+      const payload = await res.json()
+
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to upload profile image')
+      }
+
+      setLocalAvatarUrl(payload.avatar_url)
+      setProfileSuccess('Profile image updated successfully.')
+      router.refresh()
+    } catch (error) {
+      setProfileError(
+        error instanceof Error ? error.message : 'Failed to upload profile image'
+      )
+    } finally {
+      setImageUploading(false)
+      event.target.value = ''
+    }
+  }
 
   if (loading || projectsLoading) {
     return (
@@ -99,8 +202,8 @@ export default function TeacherProfilePage() {
               <h1 className="page-title">My Account</h1>
 
               <p className="page-subtitle">
-                View your teacher profile, account status, project summary, and
-                workspace activity.
+                Manage your teacher profile, account status, project summary,
+                and workspace activity.
               </p>
             </div>
 
@@ -132,12 +235,38 @@ export default function TeacherProfilePage() {
 
             <CardContent>
               <div className="flex flex-col items-center text-center">
-                <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-primary text-3xl font-bold text-primary-foreground shadow-lg">
-                  {getInitials(user.name, user.email)}
+                <div className="relative">
+                  {localAvatarUrl ? (
+                    <img
+                      src={localAvatarUrl}
+                      alt={localName || user.email || 'Teacher profile'}
+                      className="h-28 w-28 rounded-3xl border object-cover shadow-lg"
+                    />
+                  ) : (
+                    <div className="flex h-28 w-28 items-center justify-center rounded-3xl bg-primary text-3xl font-bold text-primary-foreground shadow-lg">
+                      {getInitials(localName || user.name, user.email)}
+                    </div>
+                  )}
+
+                  <label
+                    htmlFor="teacher-profile-image"
+                    className="absolute -bottom-2 -right-2 cursor-pointer rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-md"
+                  >
+                    {imageUploading ? 'Uploading...' : 'Edit'}
+                  </label>
+
+                  <input
+                    id="teacher-profile-image"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleUploadProfileImage}
+                    disabled={imageUploading}
+                    className="hidden"
+                  />
                 </div>
 
-                <h2 className="mt-5 text-2xl font-bold text-foreground">
-                  {user.name || 'Teacher'}
+                <h2 className="mt-6 text-2xl font-bold text-foreground">
+                  {localName || user.name || 'Teacher'}
                 </h2>
 
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -153,6 +282,55 @@ export default function TeacherProfilePage() {
                     Status: {formatStatus(user.status)}
                   </span>
                 </div>
+              </div>
+
+              <div className="mt-8 rounded-2xl border bg-muted/30 p-4">
+                <form onSubmit={handleUpdateName} className="space-y-3">
+                  <div>
+                    <label
+                      htmlFor="teacher-name"
+                      className="text-sm font-medium text-foreground"
+                    >
+                      Display Name
+                    </label>
+
+                    <input
+                      id="teacher-name"
+                      value={nameForm}
+                      onChange={(event) => {
+                        setNameForm(event.target.value)
+                        setProfileError(null)
+                        setProfileSuccess(null)
+                      }}
+                      disabled={profileSaving}
+                      placeholder="Enter teacher name"
+                      className="mt-2 flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm text-foreground"
+                    />
+                  </div>
+
+                  {(profileError || profileSuccess) && (
+                    <div
+                      className={`rounded-xl border p-3 text-sm ${
+                        profileError
+                          ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200'
+                          : 'border-green-200 bg-green-50 text-green-700 dark:border-green-900/60 dark:bg-green-950/40 dark:text-green-200'
+                      }`}
+                    >
+                      {profileError || profileSuccess}
+                    </div>
+                  )}
+
+                  <Button
+                    type="submit"
+                    disabled={
+                      profileSaving ||
+                      nameForm.trim() === (localName || user.name)
+                    }
+                    className="w-full rounded-xl"
+                  >
+                    {profileSaving ? 'Saving...' : 'Save Name'}
+                  </Button>
+                </form>
               </div>
 
               <div className="mt-8 space-y-3 text-sm">
