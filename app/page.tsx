@@ -305,7 +305,8 @@ export default function Home() {
         </header>
 
        <main className="relative z-10 mx-auto grid max-w-7xl items-center gap-10 px-4 pb-28 pt-32 lg:grid-cols-[0.9fr_1.1fr] lg:pb-36 lg:pt-36">
-          <h1 className="max-w-3xl text-3xl font-black leading-tight tracking-[-0.03em] text-white sm:text-4xl lg:text-5xl xl:text-6xl">
+          <div>
+            <h1 className="max-w-3xl text-5xl font-black leading-[0.95] tracking-[-0.06em] text-white sm:text-6xl lg:text-7xl xl:text-8xl">
   <span className="block drop-shadow-[0_10px_35px_rgba(255,255,255,0.12)]">
     Fairness
   </span>
@@ -429,9 +430,9 @@ export default function Home() {
 
       <section className="bg-white px-4 py-20">
         <div className="mx-auto max-w-7xl overflow-hidden rounded-[2rem] bg-[#201185] p-8 text-center text-white shadow-2xl md:p-12">
-          <h2 className="text-2xl font-black md:text-4xl">
-  Ready to make group projects fair?
-</h2>
+          <h2 className="text-3xl font-black md:text-5xl">
+            Ready to make group projects fair?
+          </h2>
 
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-white/75">
             Start with a teacher or student account and experience transparent
