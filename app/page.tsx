@@ -430,9 +430,9 @@ export default function Home() {
 
       <section className="bg-white px-4 py-20">
         <div className="mx-auto max-w-7xl overflow-hidden rounded-[2rem] bg-[#201185] p-8 text-center text-white shadow-2xl md:p-12">
-          <h2 className="text-3xl font-black md:text-5xl">
-            Ready to make group projects fair?
-          </h2>
+          <h2 className="text-2xl font-black md:text-4xl">
+  Ready to make group projects fair?
+</h2>
 
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-white/75">
             Start with a teacher or student account and experience transparent
